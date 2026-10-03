@@ -201,6 +201,20 @@ table.csv tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--rai
 .win-btn:hover { border-color: var(--accent); color: var(--accent); }
 .win-stage { flex: 1; min-height: 0; position: relative; background: #000; }
 .win-stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.pv-body.hw { display: flex; flex-direction: column; background: #000; overflow: hidden; }
+.hw-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--line); }
+.hw-pane { position: relative; overflow: hidden; background: #000; font-family: var(--font-code); font-size: 10.5px; line-height: 1.35; color: #3ddc84; }
+.hw-pane .cap { position: absolute; top: 0; right: 0; z-index: 2; padding: 1px 6px; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: #000; background: #3ddc84; }
+.hw-pane .rows { position: absolute; inset: 6px 8px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; white-space: pre; }
+.hw-pane canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hw-dim { color: #1b6b3f; }
+.hw-amber { color: var(--accent); }
+.hw-red { color: #ff5f56; }
+.hw-bar { height: 6px; background: #0d2a18; margin: 1px 0 5px; }
+.hw-bar i { display: block; height: 100%; background: #3ddc84; }
+.hw-status { position: absolute; left: 8px; right: 8px; bottom: 7px; text-align: center; font-size: 11px; letter-spacing: .12em; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hw-pane.xfer .rows { bottom: 26px; }
+@media (max-width: 720px) { .hw-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
 .pv-body.terminal { display: flex; flex-direction: column; background: var(--bg); }
 .pv-term { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 16px; font-family: var(--font-code); font-size: var(--code-size); line-height: 1.5; cursor: text; }
 .pv-term .term-out { white-space: pre-wrap; word-break: break-word; }
@@ -451,7 +465,7 @@ const App = {
   exists(p) { return C.read(p) !== null; },
   open(p) {
     if (!this.exists(p)) return;
-    Preview.override = null;
+    Preview.clearOverride();
     if (!this.tabs.includes(p)) this.tabs.push(p);
     this.active = p;
     Editor.load(p);
@@ -459,7 +473,7 @@ const App = {
     saveSoon();
   },
   close(p) {
-    Preview.override = null;
+    Preview.clearOverride();
     const i = this.tabs.indexOf(p);
     if (i < 0) return;
     this.tabs.splice(i, 1);
@@ -500,7 +514,9 @@ const Explorer = {
     const nodes = C.list();
     const kids = new Map();
     for (const n of nodes) { const d = dirOf(n.path); if (!kids.has(d)) kids.set(d, []); kids.get(d).push(n); }
-    for (const list of kids.values()) list.sort((x, y) => (y.dir - x.dir) || x.path.localeCompare(y.path));
+    /* the terminal is the way into the Windows layer, so it leads its folder */
+    const pin = n => (n.path === TERM_FILE ? 0 : 1);
+    for (const list of kids.values()) list.sort((x, y) => (pin(x) - pin(y)) || (y.dir - x.dir) || x.path.localeCompare(y.path));
     let html = "";
     const walk = (dir, depth) => {
       for (const n of kids.get(dir) || []) {
@@ -614,7 +630,7 @@ Editor.ta.addEventListener("keydown", e => {
 const CAPTURE = `<script>(function(){var s=function(l,a){try{parent.postMessage({__cterm:1,level:l,text:Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ")},"*")}catch(e){}};["log","info","warn","error"].forEach(function(l){var o=console[l];console[l]=function(){s(l,arguments);return o.apply(console,arguments)}});addEventListener("error",function(e){s("error",[e.message+(e.lineno?" (line "+e.lineno+")":"")])});})();<\/script>`;
 const Preview = {
   body: $("#pvBody"), frame: null, logs: [], consoleEl: null, target: null,
-  override: null, termLog: [],
+  override: null, termLog: [], hwTimers: [],
   soon: debounce(() => Preview.render(true), 300),
   hostHtml(p) {
     const d = dirOf(p), b = base(p);
@@ -624,15 +640,23 @@ const Preview = {
   /* A statement run from a terminal takes the pane over until you come back,
      so booting the desktop never depends on a file being open. */
   boot(stmt) {
-    this.override = stmt || { style: "torvalds", command: "windows-command", scope: "body" };
+    this.stopHollywood();
+    this.override = { kind: "win", stmt: stmt || { style: "torvalds", command: "windows-command", scope: "body" } };
     this.render();
   },
+  hollywood() {
+    this.override = { kind: "hollywood" };
+    this.render();
+  },
+  clearOverride() { this.stopHollywood(); this.override = null; },
   render(live) {
     if (this.override) {
       $("#pvPin").hidden = true;
+      this.logs = [];
+      if (this.override.kind === "hollywood") { this.hollywoodView(); return; }
       this.setKind(`<b>Windows 11</b> \u00b7 desktop \u00b7 from the terminal`);
-      this.body.className = "pv-body"; this.logs = [];
-      this.windows(WIN_META, this.override, true);
+      this.body.className = "pv-body";
+      this.windows(WIN_META, this.override.stmt, true);
       return;
     }
     const src = App.pinned || App.active;
@@ -700,7 +724,7 @@ const Preview = {
     });
     $("#winBack", this.body)?.addEventListener("click", () => {
       document.body.classList.remove("pv-full");
-      Preview.override = null;
+      Preview.clearOverride();
       Preview.render();
     });
     $("#winFull", this.body).addEventListener("click", e => {
@@ -746,6 +770,12 @@ const Preview = {
     if (!cmd) { this.termDraw(); return; }
     if (cmd === "clear") { this.termLog = []; this.termDraw(); return; }
     if (cmd === "help") { this.termPrint(TERM_HELP); this.termDraw(); return; }
+    if (/^hollywood$/i.test(cmd)) {
+      this.termPrint(`<div class="dim">rolling\u2026 nothing real is happening. Come back when you have had enough.</div>`);
+      this.termDraw();
+      this.hollywood();
+      return;
+    }
     const stmt = lennonStatement(cmd);
     if (stmt) {
       if (stmt.scope === "head") {
@@ -760,8 +790,117 @@ const Preview = {
     const loose = /^\s*lennon\b/i.test(cmd);
     this.termPrint(loose
       ? `<div class="dim">only <b>{windows-command}</b> boots the desktop from here. Type <b>help</b> for the syntax.</div>`
-      : `<div class="dim">${esc(cmd.split(/\s+/)[0])}: not a Lennon statement. Type <b>help</b>, or use a csh pane on the right for the shell.</div>`);
+      : `<div class="dim">${esc(cmd.split(/\s+/)[0])}: not a Lennon statement. Type <b>help</b> or <b>hollywood</b>, or use a csh pane on the right for the shell.</div>`);
     this.termDraw();
+  },
+  /* hollywood: four panes of cheerful nonsense, the way films draw a computer
+     doing something. Nothing here touches the file system. */
+  hollywoodView() {
+    this.setKind(`<b>hollywood</b> · the preview, hard at work`);
+    this.body.className = "pv-body hw";
+    if ($("#hwGrid", this.body)) return;
+    this.body.innerHTML =
+      `<div class="win-bar">` +
+        `<span class="meta">HOLLYWOOD</span>` +
+        `<span class="meta">4 panes</span>` +
+        `<span class="meta">entirely fictional</span>` +
+        `<button class="win-btn" id="hwBack">Back to the terminal</button>` +
+        `<button class="win-btn" id="hwFull">Fill the window</button>` +
+      `</div>` +
+      `<div class="hw-grid" id="hwGrid">` +
+        `<div class="hw-pane"><span class="cap">hexdump</span><div class="rows" id="hwHex"></div></div>` +
+        `<div class="hw-pane"><span class="cap">rain</span><canvas id="hwRain"></canvas></div>` +
+        `<div class="hw-pane"><span class="cap">syslog</span><div class="rows" id="hwLog"></div></div>` +
+        `<div class="hw-pane xfer"><span class="cap">transfer</span><div class="rows" id="hwBars"></div><div class="hw-status" id="hwStatus"></div></div>` +
+      `</div>`;
+    $("#hwBack", this.body).addEventListener("click", () => {
+      document.body.classList.remove("pv-full");
+      Preview.clearOverride(); Preview.render();
+    });
+    $("#hwFull", this.body).addEventListener("click", e => {
+      const on = document.body.classList.toggle("pv-full");
+      e.currentTarget.textContent = on ? "Back to the studio" : "Fill the window";
+    });
+    this.hwStart();
+  },
+  stopHollywood() { this.hwTimers.forEach(clearInterval); this.hwTimers = []; },
+  hwStart() {
+    this.stopHollywood();
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const every = (ms, fn) => this.hwTimers.push(setInterval(fn, calm ? ms * 5 : ms));
+    const pick = a => a[Math.random() * a.length | 0];
+    const trim = (el, n) => { while (el.childElementCount > n) el.firstElementChild.remove(); };
+    const rows = el => Math.max(4, Math.floor(el.clientHeight / 15));
+
+    /* hexdump */
+    const hex = $("#hwHex", this.body);
+    let off = 0;
+    every(90, () => {
+      const by = Array.from({ length: 16 }, () => (Math.random() * 256 | 0));
+      const asc = by.map(v => (v >= 32 && v < 127 ? String.fromCharCode(v) : ".")).join("");
+      hex.insertAdjacentHTML("beforeend",
+        `<div>${off.toString(16).padStart(8, "0")}  <span class="hw-dim">${by.map(v => v.toString(16).padStart(2, "0")).join(" ")}</span>  |${esc(asc)}|</div>`);
+      off += 16;
+      trim(hex, rows(hex));
+    });
+
+    /* rain */
+    const cv = $("#hwRain", this.body), cx = cv.getContext("2d");
+    const GLYPH = "01ｱｲｳｴｵｶｷｸｹｺｻｼｽ";
+    let drops = [], w = 0, h = 0;
+    const fit = () => {
+      w = cv.width = cv.clientWidth; h = cv.height = cv.clientHeight;
+      drops = Array.from({ length: Math.max(1, w / 10 | 0) }, () => Math.random() * h / 12 | 0);
+    };
+    fit();
+    every(70, () => {
+      if (cv.clientWidth !== w || cv.clientHeight !== h) fit();
+      cx.fillStyle = "rgba(0,0,0,.09)"; cx.fillRect(0, 0, w, h);
+      cx.font = "11px monospace";
+      drops.forEach((y, i) => {
+        cx.fillStyle = Math.random() < .08 ? "#d6ffe6" : "#3ddc84";
+        cx.fillText(pick(GLYPH), i * 10, y * 12);
+        drops[i] = y * 12 > h && Math.random() > .975 ? 0 : y + 1;
+      });
+    });
+
+    /* syslog */
+    const log = $("#hwLog", this.body);
+    const HOSTS = ["gw-01", "edge-07", "db-primary", "cache-3", "mail", "build-runner"];
+    const ACTS = [
+      ["kernel", "page allocation deferred, order=3"],
+      ["sshd", "accepted publickey for lennon"],
+      ["systemd", "reached target Multi-User System"],
+      ["nginx", "upstream kept alive, 0.004s"],
+      ["cron", "(lennon) CMD (run-parts /etc/cron.hourly)"],
+      ["audit", "policy loaded, 142 rules"],
+      ["dhcpd", "DHCPACK on 10.14.2.%d"],
+      ["kernel", "TCP: request_sock_TCP overflow"],
+    ];
+    every(220, () => {
+      const [tag, msg] = pick(ACTS);
+      const warn = Math.random() < .12;
+      const t = new Date().toTimeString().slice(0, 8);
+      log.insertAdjacentHTML("beforeend",
+        `<div><span class="hw-dim">${t}</span> ${esc(pick(HOSTS))} <span class="${warn ? "hw-red" : "hw-amber"}">${esc(tag)}</span>: ${esc(msg.replace("%d", Math.random() * 254 | 0))}</div>`);
+      trim(log, rows(log));
+    });
+
+    /* transfer */
+    const bars = $("#hwBars", this.body), status = $("#hwStatus", this.body);
+    const JOBS = ["payload.img", "libc.so.6", "manifest.tar", "keyring.gpg"];
+    let pct = JOBS.map(() => Math.random() * 60);
+    bars.innerHTML = JOBS.map(j => `<div><span class="hw-dim">${esc(j)}</span><div class="hw-bar"><i></i></div></div>`).join("");
+    const fills = bars.querySelectorAll(".hw-bar i");
+    every(150, () => {
+      pct = pct.map(v => (v >= 100 ? 0 : v + Math.random() * 7));
+      fills.forEach((f, i) => { f.style.width = Math.min(100, pct[i]).toFixed(0) + "%"; });
+    });
+    const LINES = ["SCANNING 10.0.0.0/8", "COMPILING KERNEL", "REROUTING THROUGH REYKJAVIK",
+      "DECRYPTING RSA-4096", "ENHANCING IMAGE", "BYPASSING MAINFRAME", "ACCESS GRANTED"];
+    let li = 0;
+    status.textContent = LINES[0];
+    every(1400, () => { li = (li + 1) % LINES.length; status.textContent = LINES[li]; });
   },
   buildHtml(path, src) {
     const d = dirOf(path);
@@ -861,12 +1000,13 @@ function seedWindows() {
 }
 
 const TERM_PROMPT = `<span class="u">lennon@cterm</span><span class="d">:</span><span class="p">~/project</span><span class="d">$ </span>`;
-const TERM_WELCOME = `<div class="dim">terminal \u2014 the Windows layer, one statement at a time.\nType <b>Lennon 'torvalds' {windows-command} body</b> to boot the desktop, or <b>help</b>.</div>`;
+const TERM_WELCOME = `<div class="dim">terminal \u2014 the Windows layer, one statement at a time.\nType <b>Lennon 'torvalds' {windows-command} body</b> to boot the desktop, <b>hollywood</b> to look busy, or <b>help</b>.</div>`;
 const TERM_HELP = `<div class="dim">  <b>Lennon '&lt;style&gt;' {&lt;command&gt;} &lt;scope&gt;</b>
   style   torvalds (blunt), plain, quiet, loud
   command <b>{windows-command}</b> boots the Windows 11 desktop in the preview
   scope   <b>body</b> runs it, <b>head</b> parses it without running
-  also    help, clear
+  also    <b>hollywood</b> plays a busy-looking screen in the preview
+          help, clear
   e.g.    Lennon 'torvalds' {windows-command} body</div>`;
 
 const CSS_SAMPLE = `<main style="max-width:40rem;margin:0 auto;padding:24px">
