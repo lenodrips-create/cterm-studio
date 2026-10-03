@@ -201,6 +201,11 @@ table.csv tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--rai
 .win-btn:hover { border-color: var(--accent); color: var(--accent); }
 .win-stage { flex: 1; min-height: 0; position: relative; background: #000; }
 .win-stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.pv-body.larp { display: flex; flex-direction: column; background: #000; overflow: hidden; }
+.larp-stage { flex: 1; min-height: 0; position: relative; background: #000; }
+.larp-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.larp-missing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.larp-missing code { color: var(--accent); }
 .pv-body.hw { display: flex; flex-direction: column; background: #000; overflow: hidden; }
 .hw-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--line); }
 .hw-pane { position: relative; overflow: hidden; background: #000; font-family: var(--font-code); font-size: 10.5px; line-height: 1.35; color: #3ddc84; }
@@ -648,12 +653,18 @@ const Preview = {
     this.override = { kind: "hollywood" };
     this.render();
   },
-  clearOverride() { this.stopHollywood(); this.override = null; },
+  larp() {
+    this.stopHollywood();
+    this.override = { kind: "larp" };
+    this.render();
+  },
+  clearOverride() { this.stopHollywood(); $("#larpVid", this.body)?.pause(); this.override = null; },
   render(live) {
     if (this.override) {
       $("#pvPin").hidden = true;
       this.logs = [];
       if (this.override.kind === "hollywood") { this.hollywoodView(); return; }
+      if (this.override.kind === "larp") { this.larpView(); return; }
       this.setKind(`<b>Windows 11</b> \u00b7 desktop \u00b7 from the terminal`);
       this.body.className = "pv-body";
       this.windows(WIN_META, this.override.stmt, true);
@@ -770,6 +781,12 @@ const Preview = {
     if (!cmd) { this.termDraw(); return; }
     if (cmd === "clear") { this.termLog = []; this.termDraw(); return; }
     if (cmd === "help") { this.termPrint(TERM_HELP); this.termDraw(); return; }
+    if (/^larp$/i.test(cmd)) {
+      this.termPrint(`<div class="dim">rolling media/larp\u2026</div>`);
+      this.termDraw();
+      this.larp();
+      return;
+    }
     if (/^hollywood$/i.test(cmd)) {
       this.termPrint(`<div class="dim">rolling\u2026 nothing real is happening. Come back when you have had enough.</div>`);
       this.termDraw();
@@ -792,6 +809,52 @@ const Preview = {
       ? `<div class="dim">only <b>{windows-command}</b> boots the desktop from here. Type <b>help</b> for the syntax.</div>`
       : `<div class="dim">${esc(cmd.split(/\s+/)[0])}: not a Lennon statement. Type <b>help</b> or <b>hollywood</b>, or use a csh pane on the right for the shell.</div>`);
     this.termDraw();
+  },
+  /* larp: the video published at media/larp.*, filling the pane. Autoplay only
+     works muted, so it starts silent with sound a click away. */
+  larpView() {
+    this.setKind(`<b>larp</b> · media/larp`);
+    this.body.className = "pv-body larp";
+    if ($("#larpVid", this.body)) { $("#larpVid", this.body).play().catch(() => {}); return; }
+    this.body.innerHTML =
+      `<div class="win-bar">` +
+        `<span class="meta">LARP</span>` +
+        `<span class="meta">looping</span>` +
+        `<button class="win-btn" id="larpSound">Sound on</button>` +
+        `<button class="win-btn" id="larpBack">Back to the terminal</button>` +
+        `<button class="win-btn" id="larpFull">Fill the window</button>` +
+      `</div>` +
+      `<div class="larp-stage">` +
+        `<video id="larpVid" autoplay loop muted playsinline` +
+          ` aria-label="larp">` +
+          LARP_SOURCES.map(([src, type]) => `<source src="${esc(src)}" type="${esc(type)}">`).join("") +
+        `</video>` +
+      `</div>`;
+    const v = $("#larpVid", this.body);
+    v.addEventListener("error", () => this.larpMissing());
+    v.addEventListener("loadeddata", () => $(".larp-missing", this.body)?.remove());
+    v.play().catch(() => {});
+    setTimeout(() => { if (v.networkState === 3) this.larpMissing(); }, 1500);
+    $("#larpSound", this.body).addEventListener("click", e => {
+      v.muted = !v.muted;
+      if (!v.muted) v.play().catch(() => {});
+      e.currentTarget.textContent = v.muted ? "Sound on" : "Sound off";
+    });
+    $("#larpBack", this.body).addEventListener("click", () => {
+      document.body.classList.remove("pv-full");
+      Preview.clearOverride(); Preview.render();
+    });
+    $("#larpFull", this.body).addEventListener("click", e => {
+      const on = document.body.classList.toggle("pv-full");
+      e.currentTarget.textContent = on ? "Back to the studio" : "Fill the window";
+    });
+  },
+  larpMissing() {
+    const stage = $(".larp-stage", this.body);
+    if (!stage || $(".larp-missing", stage)) return;
+    stage.insertAdjacentHTML("beforeend",
+      `<div class="larp-missing"><div>No video published beside this page yet.<br>` +
+      `Drop the file in as <code>media/larp.mp4</code> (or <code>.webm</code>, <code>.mov</code>) and run <code>larp</code> again.</div></div>`);
   },
   /* hollywood: four panes of cheerful nonsense, the way films draw a computer
      doing something. Nothing here touches the file system. */
@@ -951,6 +1014,9 @@ $("#pvPin").addEventListener("click", () => { App.pinned = null; Preview.render(
 const WIN_ENTRY = "win11/index.html";
 const WIN_MANIFEST = "/home/lennon/project/windows11.win";
 const TERM_FILE = "/home/lennon/project/terminal.term";
+/* larp plays a video published beside this page. The browser takes the first
+   source it can decode, so the extension does not have to be settled here. */
+const LARP_SOURCES = [["media/larp.mp4", "video/mp4"], ["media/larp.webm", "video/webm"], ["media/larp.mov", "video/quicktime"]];
 const TERM_SEED = `# terminal \u2014 a prompt for the Windows layer.
 #
 # Type a Lennon statement and press Enter:
@@ -1005,7 +1071,8 @@ const TERM_HELP = `<div class="dim">  <b>Lennon '&lt;style&gt;' {&lt;command&gt;
   style   torvalds (blunt), plain, quiet, loud
   command <b>{windows-command}</b> boots the Windows 11 desktop in the preview
   scope   <b>body</b> runs it, <b>head</b> parses it without running
-  also    <b>hollywood</b> plays a busy-looking screen in the preview
+  also    <b>larp</b> plays media/larp in the preview
+          <b>hollywood</b> plays a busy-looking screen in the preview
           help, clear
   e.g.    Lennon 'torvalds' {windows-command} body</div>`;
 
@@ -1182,6 +1249,11 @@ class Term {
     if (/^\s*hollywood\s*$/i.test(line)) {
       this.print("\x1b[90mrolling\u2026 nothing real is happening. Close it from the preview when you have had enough.\x1b[0m\n");
       Preview.hollywood();
+      return;
+    }
+    if (/^\s*larp\s*$/i.test(line)) {
+      this.print("\x1b[90mrolling media/larp\u2026\x1b[0m\n");
+      Preview.larp();
       return;
     }
     W.set_term(this.id);
