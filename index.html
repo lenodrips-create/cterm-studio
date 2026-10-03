@@ -624,12 +624,15 @@ const Preview = {
     const e = extOf(target), text = C.read(target) ?? "";
     this.target = target;
     const kind = LANGNAME[e] || "Text";
-    this.setKind(`<b>${esc(base(target))}</b> · ${esc(kind)}${via ? ` · via ${esc(via)}` : ""}`);
+    const stmt = e === "win" ? null : lennonStatement(text);
+    this.setKind(`<b>${esc(base(target))}</b> · ${esc(stmt ? "Windows 11 desktop" : kind)}${via ? ` · via ${esc(via)}` : ""}`);
     const keep = this.body.scrollTop;
     this.body.className = "pv-body";
     this.logs = [];
     try {
-      if (e === "html" || e === "htm") this.page(this.buildHtml(target, text), false);
+      if (stmt && stmt.scope === "head") this.body.innerHTML = lennonHead(stmt);
+      else if (stmt) this.windows(C.read(WIN_MANIFEST) ?? "", stmt);
+      else if (e === "html" || e === "htm") this.page(this.buildHtml(target, text), false);
       else if (e === "js") this.page(`<!doctype html><html><head><meta charset="utf-8">${CAPTURE}<style>:root{color-scheme:dark}body{font:14px system-ui,sans-serif;padding:16px;margin:0;background:#000;color:#dfe6f0}a{color:#8ccfff}</style></head><body><script>\n${text.replace(/<\/script/gi, "<\\/script")}\n<\/script></body></html>`, true);
       else if (e === "css") this.page(`<!doctype html><html><head><meta charset="utf-8"><style>${text.replace(/<\/style/gi, "")}</style></head><body>${CSS_SAMPLE}</body></html>`, false, true);
       else if (e === "md") this.body.innerHTML = `<article class="doc">${C.md(text)}</article>`;
@@ -646,12 +649,13 @@ const Preview = {
   },
   setKind(h) { $("#pvKind").innerHTML = h; },
   /* The Windows 11 bundle that shipped with this studio, published beside this page. */
-  windows(manifest) {
+  windows(manifest, stmt) {
     seedWindows();
-    const val = k => (manifest.match(new RegExp("^" + k + "\\s+(.+)$", "m")) || [])[1] || "";
+    const val = k => ((manifest || "").match(new RegExp("^" + k + "\\s+(.+)$", "m")) || [])[1] || "";
     this.body.className = "pv-body win";
     this.body.innerHTML =
       `<div class="win-bar">` +
+        (stmt ? `<span class="meta">style <b>${esc(stmt.style)}</b></span>` : "") +
         `<span class="meta">${esc(val("engine") || "win11React")}</span>` +
         `<span class="meta"><b>${esc(val("files") || "325")}</b> files</span>` +
         `<span class="meta"><b>${esc(val("size") || "16 MB")}</b></span>` +
@@ -724,6 +728,23 @@ $("#pvReload").addEventListener("click", () => Preview.render());
 $("#pvPin").addEventListener("click", () => { App.pinned = null; Preview.render(); });
 
 const WIN_ENTRY = "win11/index.html";
+const WIN_MANIFEST = "/home/lennon/project/windows11.win";
+/* The Windows layer is a one-line language:  Lennon '<style>' {<command>} <scope>
+   The shell understands it, and so does the preview, so dropping the line into any
+   file — index.html included — boots the desktop the same way the terminal does.
+   Lines commented out with # or // are documentation, not a statement. */
+const LENNON_RE = /^[ \t]*(?!#|\/\/)lennon[ \t]+(['"])([^'"\n]*)\1[ \t]*\{[ \t]*([a-z0-9 _.-]+?)[ \t]*\}[ \t]*([a-z]+)?[ \t]*$/im;
+function lennonHead(stmt) {
+  return `<div class="pv-meta"><span class="meta">Windows 11 desktop</span><span class="meta">style <b>${esc(stmt.style)}</b></span><span class="meta">scope <b>head</b></span></div>` +
+    `<div class="doc" style="padding:16px"><p>Parsed, not run. <code>head</code> stops at the statement; ` +
+    `change the scope to <code>body</code> to boot the desktop here.</p>` +
+    `<pre class="code"><code>Lennon '${esc(stmt.style)}' {${esc(stmt.command)}} body</code></pre></div>`;
+}
+function lennonStatement(text) {
+  const m = LENNON_RE.exec(text || "");
+  if (!m || m[3].toLowerCase() !== "windows-command") return null;
+  return { style: m[2] || "plain", command: m[3].toLowerCase(), scope: (m[4] || "body").toLowerCase() };
+}
 /* The desktop reads its settings from localStorage on our own origin, so we can
    set the theme and the user name before the iframe ever loads. */
 function seedWindows() {
