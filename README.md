@@ -35,16 +35,22 @@ Lennon '<style>' {<command>} <scope>
 ```
 
 `{windows-command}` boots the desktop. `<scope>` is `body` to run it or
-`head` to parse it without running. Both the shell and the preview pane
-understand the statement, so typing it into any open file — `index.html`
-included — boots the desktop in the preview:
+`head` to parse it without running.
 
-```
-Lennon 'torvalds' {windows-command} body
-```
+Three places understand the statement:
 
-Previewing a `.win` file does the same thing; `project/windows11.win` holds
-the bundle's settings.
+- **`project/terminal.term`** — a terminal pane in the preview. Open it from
+  the explorer and type the statement at the prompt:
+
+  ```
+  Lennon 'torvalds' {windows-command} body
+  ```
+
+- **The csh panes** on the right, with the same statement.
+- **Any open file** — drop the line into `index.html` and the preview boots
+  the desktop instead of rendering the page.
+
+`.win` files still preview as the desktop directly.
 
 ## Credits
 
