@@ -1177,6 +1177,13 @@ class Term {
     this.printHtml(`<div>${this.promptHtml()}<span class="echo">${esc(line)}</span></div>`);
     if (line.trim()) { if (this.hist[this.hist.length - 1] !== line) this.hist.push(line); }
     this.hi = this.hist.length; this.draft = "";
+    /* hollywood is the page's own, not the C shell's, so it answers at every
+       prompt rather than only in the terminal pane. */
+    if (/^\s*hollywood\s*$/i.test(line)) {
+      this.print("\x1b[90mrolling\u2026 nothing real is happening. Close it from the preview when you have had enough.\x1b[0m\n");
+      Preview.hollywood();
+      return;
+    }
     W.set_term(this.id);
     const res = C.exec(line);
     const text = [];
