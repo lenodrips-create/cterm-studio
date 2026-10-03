@@ -5,6 +5,7 @@
 | File | What it is |
 | --- | --- |
 | `larp.mp4` | What the studio plays. H.264 + AAC, 1180x642, 11.5s. |
+| `larp.webm` | The same clip in VP9 + Opus, for browsers built without H.264. |
 | `larp-original.mov` | The recording as it was handed over, untouched: HEVC in a QuickTime container. |
 
 The original is HEVC, which Safari plays and Chrome and Firefox do not, so
