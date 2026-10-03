@@ -201,6 +201,10 @@ table.csv tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--rai
 .win-btn:hover { border-color: var(--accent); color: var(--accent); }
 .win-stage { flex: 1; min-height: 0; position: relative; background: #000; }
 .win-stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.pv-body.terminal { display: flex; flex-direction: column; background: var(--bg); }
+.pv-term { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 16px; font-family: var(--font-code); font-size: var(--code-size); line-height: 1.5; cursor: text; }
+.pv-term .term-out { white-space: pre-wrap; word-break: break-word; }
+.pv-term .dim { color: var(--muted); }
 .win-boot { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 12px; font-family: var(--font-code); font-size: 11px; color: var(--muted); background: linear-gradient(transparent, rgba(0,0,0,.85) 40%); pointer-events: none; }
 body.pv-full .work > *:not(#pPreview) { display: none; }
 body.pv-full #pPreview { flex: 1 1 auto; }
@@ -406,11 +410,11 @@ const TYPES = [
   ["html", "HTML page", "<>"], ["css", "CSS stylesheet", "#"], ["js", "JavaScript", "JS"], ["ts", "TypeScript", "TS"],
   ["md", "Markdown", "M↓"], ["ipynb", "Jupyter Notebook", "nb"], ["py", "Python", "py"], ["c", "C", "C"], ["cpp", "C++", "C++"],
   ["json", "JSON", "{}"], ["csv", "CSV table", "csv"], ["svg", "SVG image", "svg"], ["sql", "SQL", "sql"], ["yaml", "YAML", "yml"],
-  ["sh", "Shell script", "$_"], ["txt", "Plain text", "txt"], ["win", "Windows desktop", "\u229e"],
+  ["sh", "Shell script", "$_"], ["txt", "Plain text", "txt"], ["win", "Windows desktop", "\u229e"], ["term", "Terminal", ">_"],
 ];
 const BADGE = Object.fromEntries(TYPES.map(t => [t[0], t[2]]));
 Object.assign(BADGE, { htm: "<>", h: "h", yml: "yml", jsx: "JSX", tsx: "TSX", xml: "xml" });
-const LANGNAME = { html: "HTML", htm: "HTML", css: "CSS", js: "JavaScript", ts: "TypeScript", md: "Markdown", ipynb: "Jupyter Notebook", py: "Python", c: "C", h: "C header", cpp: "C++", json: "JSON", csv: "CSV", svg: "SVG", sql: "SQL", yaml: "YAML", yml: "YAML", sh: "Shell", txt: "Plain text", win: "Windows 11 desktop" };
+const LANGNAME = { html: "HTML", htm: "HTML", css: "CSS", js: "JavaScript", ts: "TypeScript", md: "Markdown", ipynb: "Jupyter Notebook", py: "Python", c: "C", h: "C header", cpp: "C++", json: "JSON", csv: "CSV", svg: "SVG", sql: "SQL", yaml: "YAML", yml: "YAML", sh: "Shell", txt: "Plain text", win: "Windows 11 desktop", term: "Terminal" };
 function badge(path, dir) {
   if (dir) return `<span class="badge b-dir">▸</span>`;
   const e = extOf(path);
@@ -447,6 +451,7 @@ const App = {
   exists(p) { return C.read(p) !== null; },
   open(p) {
     if (!this.exists(p)) return;
+    Preview.override = null;
     if (!this.tabs.includes(p)) this.tabs.push(p);
     this.active = p;
     Editor.load(p);
@@ -454,6 +459,7 @@ const App = {
     saveSoon();
   },
   close(p) {
+    Preview.override = null;
     const i = this.tabs.indexOf(p);
     if (i < 0) return;
     this.tabs.splice(i, 1);
@@ -608,13 +614,27 @@ Editor.ta.addEventListener("keydown", e => {
 const CAPTURE = `<script>(function(){var s=function(l,a){try{parent.postMessage({__cterm:1,level:l,text:Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ")},"*")}catch(e){}};["log","info","warn","error"].forEach(function(l){var o=console[l];console[l]=function(){s(l,arguments);return o.apply(console,arguments)}});addEventListener("error",function(e){s("error",[e.message+(e.lineno?" (line "+e.lineno+")":"")])});})();<\/script>`;
 const Preview = {
   body: $("#pvBody"), frame: null, logs: [], consoleEl: null, target: null,
+  override: null, termLog: [],
   soon: debounce(() => Preview.render(true), 300),
   hostHtml(p) {
     const d = dirOf(p), b = base(p);
     const sibs = C.list().filter(n => !n.dir && dirOf(n.path) === d && /\.html?$/i.test(n.path));
     return sibs.find(n => { const t = C.read(n.path) || ""; return t.includes(`"${b}"`) || t.includes(`'${b}'`); })?.path || null;
   },
+  /* A statement run from a terminal takes the pane over until you come back,
+     so booting the desktop never depends on a file being open. */
+  boot(stmt) {
+    this.override = stmt || { style: "torvalds", command: "windows-command", scope: "body" };
+    this.render();
+  },
   render(live) {
+    if (this.override) {
+      $("#pvPin").hidden = true;
+      this.setKind(`<b>Windows 11</b> \u00b7 desktop \u00b7 from the terminal`);
+      this.body.className = "pv-body"; this.logs = [];
+      this.windows(WIN_META, this.override, true);
+      return;
+    }
     const src = App.pinned || App.active;
     $("#pvPin").hidden = !App.pinned;
     if (!src) { this.setKind(""); this.body.className = "pv-body"; this.body.innerHTML = `<div class="pv-empty"><div>Nothing to preview yet.</div><div>Open a file to see it rendered here.</div></div>`; return; }
@@ -624,19 +644,23 @@ const Preview = {
     const e = extOf(target), text = C.read(target) ?? "";
     this.target = target;
     const kind = LANGNAME[e] || "Text";
-    this.setKind(`<b>${esc(base(target))}</b> · ${esc(kind)}${via ? ` · via ${esc(via)}` : ""}`);
+    const stmt = e === "win" ? null : lennonStatement(text);
+    this.setKind(`<b>${esc(base(target))}</b> · ${esc(stmt ? "Windows 11 desktop" : kind)}${via ? ` · via ${esc(via)}` : ""}`);
     const keep = this.body.scrollTop;
     this.body.className = "pv-body";
     this.logs = [];
     try {
-      if (e === "html" || e === "htm") this.page(this.buildHtml(target, text), false);
+      if (stmt && stmt.scope === "head") this.body.innerHTML = lennonHead(stmt);
+      else if (stmt) this.windows(WIN_META, stmt);
+      else if (e === "term") this.terminal();
+      else if (e === "html" || e === "htm") this.page(this.buildHtml(target, text), false);
       else if (e === "js") this.page(`<!doctype html><html><head><meta charset="utf-8">${CAPTURE}<style>:root{color-scheme:dark}body{font:14px system-ui,sans-serif;padding:16px;margin:0;background:#000;color:#dfe6f0}a{color:#8ccfff}</style></head><body><script>\n${text.replace(/<\/script/gi, "<\\/script")}\n<\/script></body></html>`, true);
       else if (e === "css") this.page(`<!doctype html><html><head><meta charset="utf-8"><style>${text.replace(/<\/style/gi, "")}</style></head><body>${CSS_SAMPLE}</body></html>`, false, true);
       else if (e === "md") this.body.innerHTML = `<article class="doc">${C.md(text)}</article>`;
       else if (e === "ipynb") this.body.innerHTML = renderNotebook(text);
       else if (e === "csv") this.body.innerHTML = renderCsv(text);
       else if (e === "json") this.body.innerHTML = renderJson(text);
-      else if (e === "win") this.windows(text);
+      else if (e === "win") this.windows(text || WIN_META);
       else if (e === "svg") this.body.innerHTML = renderSvg(text);
       else this.body.innerHTML = renderSource(target, text);
     } catch (err) {
@@ -646,16 +670,18 @@ const Preview = {
   },
   setKind(h) { $("#pvKind").innerHTML = h; },
   /* The Windows 11 bundle that shipped with this studio, published beside this page. */
-  windows(manifest) {
+  windows(manifest, stmt, back) {
     seedWindows();
-    const val = k => (manifest.match(new RegExp("^" + k + "\\s+(.+)$", "m")) || [])[1] || "";
+    const val = k => ((manifest || "").match(new RegExp("^" + k + "\\s+(.+)$", "m")) || [])[1] || "";
     this.body.className = "pv-body win";
     this.body.innerHTML =
       `<div class="win-bar">` +
+        (stmt ? `<span class="meta">style <b>${esc(stmt.style)}</b></span>` : "") +
         `<span class="meta">${esc(val("engine") || "win11React")}</span>` +
         `<span class="meta"><b>${esc(val("files") || "325")}</b> files</span>` +
         `<span class="meta"><b>${esc(val("size") || "16 MB")}</b></span>` +
         `<span class="meta">theme <b>dark</b></span>` +
+        (back ? `<button class="win-btn" id="winBack">Back to the terminal</button>` : "") +
         `<button class="win-btn" id="winFull">Fill the window</button>` +
       `</div>` +
       `<div class="win-stage"><iframe title="Windows 11 desktop" src="${WIN_ENTRY}" ` +
@@ -672,10 +698,70 @@ const Preview = {
         boot.textContent = "The Windows 11 files are not published next to this page.";
       }
     });
+    $("#winBack", this.body)?.addEventListener("click", () => {
+      document.body.classList.remove("pv-full");
+      Preview.override = null;
+      Preview.render();
+    });
     $("#winFull", this.body).addEventListener("click", e => {
       const on = document.body.classList.toggle("pv-full");
       e.currentTarget.textContent = on ? "Back to the studio" : "Fill the window";
     });
+  },
+  /* The terminal pane: a prompt that speaks the Lennon language and nothing
+     else. Its scrollback lives on Preview, so switching files and coming back
+     keeps the session. */
+  terminal() {
+    this.body.className = "pv-body terminal";
+    if ($("#pvTermIn", this.body)) return;
+    this.body.innerHTML =
+      `<div class="pv-meta"><span class="meta">Terminal</span><span class="meta">Lennon statements boot the desktop</span></div>` +
+      `<div class="pv-term" id="pvTerm"><div class="term-out" id="pvTermOut"></div>` +
+      `<div class="term-line"><span class="prompt">${TERM_PROMPT}</span>` +
+      `<input class="term-in" id="pvTermIn" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Terminal input"></div></div>`;
+    const wrap = $("#pvTerm", this.body), input = $("#pvTermIn", this.body);
+    if (!this.termLog.length) this.termPrint(TERM_WELCOME);
+    this.termDraw();
+    wrap.addEventListener("mousedown", e => { if (e.target === wrap || e.target.id === "pvTermOut") { e.preventDefault(); input.focus(); } });
+    input.addEventListener("keydown", e => {
+      if (e.key !== "Enter") return;
+      const line = input.value;
+      input.value = "";
+      this.termRun(line);
+    });
+    const a = document.activeElement;
+    if (!a || !/^(INPUT|TEXTAREA)$/.test(a.tagName)) input.focus({ preventScroll: true });
+  },
+  termPrint(html) { this.termLog.push(html); },
+  termDraw() {
+    const out = $("#pvTermOut", this.body);
+    if (!out) return;
+    out.innerHTML = this.termLog.join("");
+    const wrap = $("#pvTerm", this.body);
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+  },
+  termRun(line) {
+    this.termPrint(`<div>${TERM_PROMPT}<span class="echo">${esc(line)}</span></div>`);
+    const cmd = line.trim();
+    if (!cmd) { this.termDraw(); return; }
+    if (cmd === "clear") { this.termLog = []; this.termDraw(); return; }
+    if (cmd === "help") { this.termPrint(TERM_HELP); this.termDraw(); return; }
+    const stmt = lennonStatement(cmd);
+    if (stmt) {
+      if (stmt.scope === "head") {
+        this.termPrint(`<div class="dim">parsed: style <b>${esc(stmt.style)}</b>, command <b>${esc(stmt.command)}</b>. head stops here \u2014 use body to run it.</div>`);
+        this.termDraw(); return;
+      }
+      this.termPrint(`<div class="dim">booting the Windows 11 desktop\u2026 the boot screen runs for a few seconds, then click Sign in.</div>`);
+      this.termDraw();
+      this.boot(stmt);
+      return;
+    }
+    const loose = /^\s*lennon\b/i.test(cmd);
+    this.termPrint(loose
+      ? `<div class="dim">only <b>{windows-command}</b> boots the desktop from here. Type <b>help</b> for the syntax.</div>`
+      : `<div class="dim">${esc(cmd.split(/\s+/)[0])}: not a Lennon statement. Type <b>help</b>, or use a csh pane on the right for the shell.</div>`);
+    this.termDraw();
   },
   buildHtml(path, src) {
     const d = dirOf(path);
@@ -724,6 +810,41 @@ $("#pvReload").addEventListener("click", () => Preview.render());
 $("#pvPin").addEventListener("click", () => { App.pinned = null; Preview.render(); });
 
 const WIN_ENTRY = "win11/index.html";
+const WIN_MANIFEST = "/home/lennon/project/windows11.win";
+const TERM_FILE = "/home/lennon/project/terminal.term";
+const TERM_SEED = `# terminal \u2014 a prompt for the Windows layer.
+#
+# Type a Lennon statement and press Enter:
+#
+#   Lennon 'torvalds' {windows-command} body
+#
+# body runs the statement, head parses it without running it.
+# help prints the syntax, clear wipes the screen.
+`;
+/* The manifest lives in the page now that the terminal has replaced the .win
+   file, so the desktop's bar keeps its real numbers either way. */
+let WIN_META = "engine    win11React (React, open source, Creative Commons)\nfiles     325\nsize      16 MB\ntheme     dark\nuser      Lennon\n";
+function installTerminal() {
+  const old = C.read(WIN_MANIFEST);
+  if (old !== null) { WIN_META = old; C.exec("rm " + WIN_MANIFEST); }
+  if (C.read(TERM_FILE) === null) C.write(TERM_FILE, TERM_SEED);
+}
+/* The Windows layer is a one-line language:  Lennon '<style>' {<command>} <scope>
+   The shell understands it, and so does the preview, so dropping the line into any
+   file — index.html included — boots the desktop the same way the terminal does.
+   Lines commented out with # or // are documentation, not a statement. */
+const LENNON_RE = /^[ \t]*(?!#|\/\/)lennon[ \t]+(['"])([^'"\n]*)\1[ \t]*\{[ \t]*([a-z0-9 _.-]+?)[ \t]*\}[ \t]*([a-z]+)?[ \t]*$/im;
+function lennonHead(stmt) {
+  return `<div class="pv-meta"><span class="meta">Windows 11 desktop</span><span class="meta">style <b>${esc(stmt.style)}</b></span><span class="meta">scope <b>head</b></span></div>` +
+    `<div class="doc" style="padding:16px"><p>Parsed, not run. <code>head</code> stops at the statement; ` +
+    `change the scope to <code>body</code> to boot the desktop here.</p>` +
+    `<pre class="code"><code>Lennon '${esc(stmt.style)}' {${esc(stmt.command)}} body</code></pre></div>`;
+}
+function lennonStatement(text) {
+  const m = LENNON_RE.exec(text || "");
+  if (!m || m[3].toLowerCase() !== "windows-command") return null;
+  return { style: m[2] || "plain", command: m[3].toLowerCase(), scope: (m[4] || "body").toLowerCase() };
+}
 /* The desktop reads its settings from localStorage on our own origin, so we can
    set the theme and the user name before the iframe ever loads. */
 function seedWindows() {
@@ -738,6 +859,15 @@ function seedWindows() {
     localStorage.setItem("cterm-seeded-win", "1");
   } catch (e) { /* storage unavailable: the desktop just uses its own defaults */ }
 }
+
+const TERM_PROMPT = `<span class="u">lennon@cterm</span><span class="d">:</span><span class="p">~/project</span><span class="d">$ </span>`;
+const TERM_WELCOME = `<div class="dim">terminal \u2014 the Windows layer, one statement at a time.\nType <b>Lennon 'torvalds' {windows-command} body</b> to boot the desktop, or <b>help</b>.</div>`;
+const TERM_HELP = `<div class="dim">  <b>Lennon '&lt;style&gt;' {&lt;command&gt;} &lt;scope&gt;</b>
+  style   torvalds (blunt), plain, quiet, loud
+  command <b>{windows-command}</b> boots the Windows 11 desktop in the preview
+  scope   <b>body</b> runs it, <b>head</b> parses it without running
+  also    help, clear
+  e.g.    Lennon 'torvalds' {windows-command} body</div>`;
 
 const CSS_SAMPLE = `<main style="max-width:40rem;margin:0 auto;padding:24px">
 <h1>Heading one</h1><h2>Heading two</h2>
@@ -916,13 +1046,9 @@ class Term {
         if (verb === "open") App.open(arg);
         else if (verb === "preview") { App.pinned = arg; if (!App.tabs.includes(arg)) App.open(arg); else Preview.render(); }
         else if (verb === "clear") { this.clear(); text.length = 0; }
-        else if (verb === "winboot") {
-          const p = "/home/lennon/project/windows11.win";
-          App.pinned = p;
-          if (App.exists(p) && !App.tabs.includes(p)) App.open(p); else Preview.render();
-        }
+        else if (verb === "winboot") Preview.boot();
         else if (verb === "mv") { const [a, b] = arg.split(" "); App.renamed(a, b); }
-        else if (verb === "reset") { App.tabs = []; App.active = null; App.pinned = null; ["index.html", "README.md", "analysis.ipynb"].forEach(f => { const p = "/home/lennon/project/" + f; if (!App.tabs.includes(p)) App.tabs.push(p); }); App.active = App.tabs[0]; Editor.load(App.active); }
+        else if (verb === "reset") { App.tabs = []; App.active = null; App.pinned = null; ["index.html", "README.md", "analysis.ipynb"].forEach(f => { const p = "/home/lennon/project/" + f; if (!App.tabs.includes(p)) App.tabs.push(p); }); App.active = App.tabs[0]; Editor.load(App.active); installTerminal(); }
       } else text.push(l);
     }
     const s = text.join("\n");
@@ -1070,6 +1196,7 @@ $("#toggleExplorer").addEventListener("click", e => {
   W = instance.exports;
   W.init();
   const saved = loadState();
+  installTerminal();
   if (window.matchMedia("(max-width: 880px)").matches) $("#explorer").hidden = true, $("#toggleExplorer").setAttribute("aria-pressed", "false");
   $("#coreInfo").innerHTML = `C core <b>${(bytes.length / 1024).toFixed(0)} KB</b> wasm32 · editor, preview and shell all call into csh.c`;
 
