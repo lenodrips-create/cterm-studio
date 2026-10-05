@@ -9,7 +9,7 @@ Windows 11 desktop bundle it previews.
 | --- | --- |
 | `index.html` | The landing page (built from `landing/`). **Enter** — the button or the key — opens the studio. |
 | `studio.html` | The whole studio: editor, preview pane, file explorer and two shells, in one file. |
-| `landing/` | Source for the landing page: React 19 + Vite + `motion`, plain CSS. |
+| `landing/` | Source for the landing page: React 19 + Vite + `motion`, plain CSS. Just the background video and an Enter button. |
 | `landing-assets/` | The landing page's built JS and CSS. |
 | `win11/` | The Windows 11 web desktop the studio boots in its preview pane. |
 

@@ -27,116 +27,8 @@ button {
   background: #ffffff;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end;
   overflow: hidden;
-}
-
-/* ---------- Navbar ---------- */
-.navbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  pointer-events: none;
-}
-
-.navbar > * {
-  pointer-events: auto;
-}
-
-.nav-left,
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #000;
-  text-decoration: none;
-}
-
-.logo-icon {
-  width: 28px;
-  height: 28px;
-}
-
-.brand-text {
-  display: none;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.menu-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 14px 4px 4px;
-  border: none;
-  border-radius: 9999px;
-  background: #000;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.menu-circle,
-.grid-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9999px;
-  flex: none;
-}
-
-.menu-circle {
-  background: #fff;
-}
-
-.tags-pill {
-  display: none;
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  height: 36px;
-  border-radius: 9999px;
-  background: #f4f4f6;
-  font-size: 11px;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.7);
-}
-
-.systems-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  border-radius: 9999px;
-  background: #f4f4f6;
-}
-
-.grid-btn {
-  border: none;
-  background: #000;
-  padding: 0;
-}
-
-.systems-label {
-  display: none;
-  padding-right: 10px;
-  font-size: 11px;
-  font-weight: 500;
 }
 
 /* ---------- Video ---------- */
@@ -156,62 +48,22 @@ button {
   display: block;
 }
 
-/* ---------- Footer ---------- */
+/* ---------- Footer: Enter, bottom centre ---------- */
 .footer {
   position: relative;
   z-index: 30;
-  margin-top: auto;
   display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 96px 16px 24px;
+  justify-content: center;
+  padding: 96px 16px 32px;
   background: linear-gradient(to top, #ffffff 0%, rgba(255, 255, 255, 0.8) 50%, transparent 100%);
 }
 
-.footer-left {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.subtitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.55);
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 9999px;
-  background: #000;
-  flex: none;
-}
-
-.heading {
-  margin: 0;
-  font-weight: 300;
-  font-size: clamp(2rem, 8vw, 4.5rem);
-  letter-spacing: -0.03em;
-  line-height: 1;
-}
-
-.buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
 .btn {
-  padding: 10px 20px;
+  padding: 12px 32px;
   border-radius: 9999px;
   font-size: 13px;
   font-weight: 500;
-  transition: opacity 0.2s, background 0.2s;
+  transition: opacity 0.2s;
 }
 
 .btn-dark {
@@ -224,57 +76,7 @@ button {
   opacity: 0.85;
 }
 
-.btn-outline {
-  background: transparent;
-  color: #000;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-}
-
-.btn-outline:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.footer-right {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.tag {
-  padding: 6px 12px;
-  border-radius: 9999px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-/* ---------- Desktop ---------- */
 @media (min-width: 768px) {
-  .navbar {
-    padding: 24px 32px;
-  }
-
-  .brand-text,
-  .systems-label {
-    display: inline;
-  }
-
-  .tags-pill {
-    display: flex;
-  }
-
-  .menu-circle,
-  .grid-btn {
-    width: 32px;
-    height: 32px;
-  }
-
-  .logo-icon {
-    width: 32px;
-    height: 32px;
-  }
-
   .video-wrap {
     top: 0;
     left: 0;
@@ -283,13 +85,6 @@ button {
   }
 
   .footer {
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
-    padding: 160px 32px 32px;
-  }
-
-  .heading {
-    font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+    padding: 160px 32px 40px;
   }
 }
