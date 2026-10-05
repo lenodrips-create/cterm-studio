@@ -1,5 +1,3 @@
-# vela
-
 CTerm Studio — a code studio that runs entirely in the browser, plus the
 Windows 11 desktop bundle it previews.
 
