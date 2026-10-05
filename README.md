@@ -7,12 +7,27 @@ Windows 11 desktop bundle it previews.
 
 | Path | What it is |
 | --- | --- |
-| `index.html` | The whole studio: editor, preview pane, file explorer and two shells, in one file. |
+| `index.html` | The landing page (built from `landing/`). **Enter** — the button or the key — opens the studio. |
+| `studio.html` | The whole studio: editor, preview pane, file explorer and two shells, in one file. |
+| `landing/` | Source for the landing page: React 19 + Vite + `motion`, plain CSS. |
+| `landing-assets/` | The landing page's built JS and CSS. |
 | `win11/` | The Windows 11 web desktop the studio boots in its preview pane. |
 
-Open `index.html` over HTTP (`python3 -m http.server`, then visit
-`http://localhost:8000/`) — the preview pane loads `win11/` as a relative
+Open the site over HTTP (`python3 -m http.server`, then visit
+`http://localhost:8000/`) — the landing page links to `studio.html`, and the preview pane loads `win11/` as a relative
 path, so opening the file straight off disk won't boot the desktop.
+
+## The landing page
+
+```
+cd landing
+npm install
+npm run dev     # local dev server
+npm run build   # writes index.html + landing-assets/ to the repo root
+```
+
+Commit the rebuilt `index.html` and `landing-assets/` after changing anything
+in `landing/src`.
 
 ## The studio
 
